@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WireGuard Manager</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c0f;
+    --surface: #0f1318;
+    --surface2: #151b22;
+    --border: #1e2730;
+    --border-bright: #2a3540;
+    --accent: #00e5a0;
+    --accent-dim: rgba(0, 229, 160, 0.12);
+    --accent-glow: rgba(0, 229, 160, 0.25);
+    --red: #ff4560;
+    --red-dim: rgba(255, 69, 96, 0.12);
+    --yellow: #ffc947;
+    --text: #c8d8e4;
+    --text-dim: #506070;
+    --text-faint: #2a3a48;
+    --font-mono: 'JetBrains Mono', monospace;
+    --font-display: 'Syne', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--text-faint) 1px, transparent 1px),
+      linear-gradient(90deg, var(--text-faint) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.15;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 40px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+
+  .logo-icon {
+    width: 36px; height: 36px;
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--accent); font-size: 18px;
+  }
+
+  .logo h1 {
+    font-family: var(--font-display);
+    font-size: 22px; font-weight: 800;
+    letter-spacing: -0.02em; color: #fff;
+  }
+
+  .tagline {
+    font-size: 11px; color: var(--text-dim);
+    letter-spacing: 0.08em; text-transform: uppercase;
+    padding-left: 48px;
+  }
+
+  .header-status { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+
+  .status-badge {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+  }
+
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--text-dim);
+    transition: background 0.4s, box-shadow 0.4s;
+  }
+  .dot.active { background: var(--accent); box-shadow: 0 0 8px var(--accent-glow); animation: pulse 2s infinite; }
+  .dot.error  { background: var(--red); box-shadow: 0 0 8px rgba(255,69,96,0.4); }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+  .active-name { font-size: 11px; color: var(--text-dim); }
+
+  .refresh-badge {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 10px; color: var(--text-faint); letter-spacing: 0.05em;
+  }
+  .refresh-ring {
+    width: 12px; height: 12px;
+    border: 1.5px solid var(--text-faint);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 3s linear infinite;
+  }
+
+  /* ── Panels ── */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden; margin-bottom: 16px;
+  }
+
+  .panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+
+  .panel-title {
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim);
+  }
+
+  .panel-count {
+    font-size: 11px; color: var(--text-dim);
+    background: var(--border); padding: 2px 8px; border-radius: 20px;
+  }
+
+  .panel-body { padding: 20px; }
+
+  /* ── Upload zone ── */
+  .upload-zone {
+    border: 1px dashed var(--border-bright); border-radius: 8px; padding: 28px;
+    text-align: center; cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative; overflow: hidden;
+  }
+  .upload-zone:hover, .upload-zone.drag-over { border-color: var(--accent); background: var(--accent-dim); }
+  .upload-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .upload-icon { font-size: 28px; margin-bottom: 8px; display: block; }
+  .upload-label { font-size: 12px; color: var(--text-dim); line-height: 1.6; }
+  .upload-label strong { color: var(--accent); font-weight: 500; }
+
+  .file-selected {
+    margin-top: 14px; display: none;
+    align-items: center; justify-content: space-between;
+    background: var(--accent-dim); border: 1px solid var(--accent);
+    border-radius: 6px; padding: 10px 14px; font-size: 12px;
+  }
+  .file-selected.visible { display: flex; }
+  .file-selected .fname { color: var(--accent); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 280px; }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 9px 18px; border-radius: 6px; border: 1px solid transparent;
+    font-family: var(--font-mono); font-size: 12px; font-weight: 500;
+    letter-spacing: 0.04em; cursor: pointer; transition: all 0.15s; user-select: none;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
+
+  .btn-primary { background: var(--accent); color: #000; border-color: var(--accent); }
+  .btn-primary:hover:not(:disabled) { background: #00ffb3; border-color: #00ffb3; }
+
+  .btn-danger { background: var(--red-dim); color: var(--red); border-color: var(--red); }
+  .btn-danger:hover:not(:disabled) { background: rgba(255,69,96,0.22); }
+
+  .btn-connect { background: transparent; color: var(--accent); border-color: var(--accent); padding: 6px 14px; font-size: 11px; }
+  .btn-connect:hover:not(:disabled) { background: var(--accent-dim); }
+  .btn-connect.active { background: var(--accent); color: #000; }
+
+  .btn-delete { background: transparent; color: var(--text-faint); border-color: transparent; padding: 6px 10px; font-size: 13px; }
+  .btn-delete:hover:not(:disabled) { color: var(--red); border-color: var(--red); background: var(--red-dim); }
+
+  .actions-row { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+
+  /* ── Config list ── */
+  .config-list { display: flex; flex-direction: column; gap: 2px; }
+
+  .config-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; border-radius: 7px; border: 1px solid transparent;
+    transition: all 0.15s;
+    animation: fadeIn 0.3s ease forwards; opacity: 0;
+  }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+
+  .config-item:hover { background: var(--surface2); border-color: var(--border); }
+  .config-item.connected { background: var(--accent-dim); border-color: rgba(0,229,160,0.3); }
+
+  .config-left { display: flex; align-items: center; gap: 12px; }
+
+  .config-indicator { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); flex-shrink: 0; }
+  .config-item.connected .config-indicator { background: var(--accent); box-shadow: 0 0 6px var(--accent-glow); }
+
+  .config-name { font-size: 13px; color: var(--text); }
+  .config-item.connected .config-name { color: var(--accent); }
+  .config-meta { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+
+  .config-actions { display: flex; gap: 6px; align-items: center; }
+
+  /* ── Empty state ── */
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--text-dim); }
+  .empty-state .empty-icon { font-size: 36px; margin-bottom: 12px; opacity: 0.4; display: block; }
+  .empty-state p { font-size: 12px; line-height: 1.6; }
+
+  /* ── Confirm dialog ── */
+  .overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7); z-index: 100;
+    align-items: center; justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .overlay.visible { display: flex; }
+
+  .dialog {
+    background: var(--surface); border: 1px solid var(--border-bright);
+    border-radius: 12px; padding: 28px; max-width: 380px; width: 90%;
+    animation: popIn 0.2s ease;
+  }
+  @keyframes popIn { from{transform:scale(0.9);opacity:0} to{transform:scale(1);opacity:1} }
+
+  .dialog-icon { font-size: 32px; text-align: center; margin-bottom: 12px; }
+  .dialog h3 { font-family: var(--font-display); font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 8px; text-align: center; }
+  .dialog p { font-size: 12px; color: var(--text-dim); text-align: center; line-height: 1.6; margin-bottom: 24px; }
+  .dialog p strong { color: var(--red); }
+  .dialog-actions { display: flex; gap: 10px; }
+  .dialog-actions .btn { flex: 1; justify-content: center; }
+
+  /* ── Terminal ── */
+  .terminal { background: #060a0d; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+
+  .terminal-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--surface2);
+  }
+
+  .terminal-dots { display: flex; gap: 6px; }
+  .terminal-dots span { width: 10px; height: 10px; border-radius: 50%; }
+  .td-red{background:#ff5f56} .td-yellow{background:#ffbd2e} .td-green{background:#27c93f}
+
+  .terminal-title { font-size: 11px; color: var(--text-dim); letter-spacing: 0.06em; flex: 1; text-align: center; }
+
+  .terminal-body {
+    padding: 16px 20px; min-height: 80px; max-height: 200px;
+    overflow-y: auto; font-size: 12px; line-height: 1.8;
+  }
+
+  .log-line { display: flex; gap: 12px; animation: logIn 0.2s ease; }
+  @keyframes logIn { from{opacity:0;transform:translateX(-6px)} to{opacity:1;transform:translateX(0)} }
+
+  .log-time  { color: var(--text-faint); flex-shrink: 0; }
+  .log-ok    { color: var(--accent); }
+  .log-err   { color: var(--red); }
+  .log-info  { color: var(--yellow); }
+  .log-plain { color: var(--text-dim); }
+
+  .log-cursor {
+    display: inline-block; width: 7px; height: 13px;
+    background: var(--accent); animation: blink 1s step-end infinite;
+    vertical-align: middle; margin-left: 2px;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid rgba(0,229,160,0.2);
+    border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 0.6s linear infinite; display: inline-block;
+  }
+  @keyframes spin { to{transform:rotate(360deg)} }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">
+        <div class="logo-icon">⬡</div>
+        <h1>WireGuard</h1>
+      </div>
+      <div class="tagline">VPN Manager · Interface de Controlo</div>
+    </div>
+    <div class="header-status">
+      <div class="status-badge">
+        <div class="dot" id="statusDot"></div>
+        <span id="statusText">A verificar...</span>
+      </div>
+      <div class="active-name" id="activeName"></div>
+      <div class="refresh-badge">
+        <div class="refresh-ring"></div>
+        auto-refresh 10s
+      </div>
+    </div>
+  </div>
+
+  <!-- Upload Panel -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Importar Configuração</span>
+    </div>
+    <div class="panel-body">
+      <div class="upload-zone" id="dropZone">
+        <input type="file" id="fileInput" accept=".conf">
+        <span class="upload-icon">⬆</span>
+        <div class="upload-label">
+          <strong>Clique para selecionar</strong> ou arraste o ficheiro aqui<br>
+          <span style="font-size:10px;opacity:0.6">Ficheiros .conf do WireGuard · máx 1 MB</span>
+        </div>
+      </div>
+      <div class="file-selected" id="fileSelected">
+        <span class="fname" id="fileName"></span>
+        <span style="color:var(--text-dim);font-size:11px" id="fileSize"></span>
+      </div>
+      <div class="actions-row">
+        <button class="btn btn-primary" onclick="doUpload()" id="btnUpload" disabled>
+          <span>⬆</span> Fazer Upload
+        </button>
+        <button class="btn btn-danger" onclick="doDisconnect()">
+          <span>✕</span> Desconectar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Configs Panel -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Configurações Disponíveis</span>
+      <span class="panel-count" id="configCount">0</span>
+    </div>
+    <div class="panel-body" style="padding:12px">
+      <div class="config-list" id="configList">
+        <div class="empty-state">
+          <span class="empty-icon">◈</span>
+          <p>Nenhuma configuração encontrada.<br>Faça upload de um ficheiro .conf para começar.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Terminal -->
+  <div class="terminal">
+    <div class="terminal-header">
+      <div class="terminal-dots">
+        <span class="td-red"></span><span class="td-yellow"></span><span class="td-green"></span>
+      </div>
+      <div class="terminal-title">wg-manager · log</div>
+    </div>
+    <div class="terminal-body" id="terminalBody">
+      <div class="log-line">
+        <span class="log-time">--:--:--</span>
+        <span class="log-plain">WireGuard Manager iniciado. A sincronizar estado...<span class="log-cursor"></span></span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Dialog de confirmação para apagar -->
+<div class="overlay" id="deleteOverlay">
+  <div class="dialog">
+    <div class="dialog-icon">🗑</div>
+    <h3>Apagar configuração?</h3>
+    <p>Vai apagar permanentemente <strong id="deleteTargetName"></strong>.<br>Esta acção não pode ser desfeita.</p>
+    <div class="dialog-actions">
+      <button class="btn btn-danger" onclick="confirmDelete()">Apagar</button>
+      <button class="btn" style="background:var(--surface2);color:var(--text-dim);border-color:var(--border-bright)" onclick="closeDeleteDialog()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ─── Estado ───────────────────────────────────────────────
+  let activeConfig = null;   // iface activa (sem .conf)
+  let deleteTarget = null;   // iface pendente de confirmação
+
+  // ─── File input / drag-and-drop ───────────────────────────
+  const fileInput = document.getElementById('fileInput');
+  const dropZone  = document.getElementById('dropZone');
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) showFilePreview(fileInput.files[0]);
+  });
+  dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f) { fileInput.files = e.dataTransfer.files; showFilePreview(f); }
+  });
+
+  function showFilePreview(file) {
+    document.getElementById('fileName').textContent = file.name;
+    document.getElementById('fileSize').textContent  = formatBytes(file.size);
+    document.getElementById('fileSelected').classList.add('visible');
+    document.getElementById('btnUpload').disabled = false;
+  }
+  function formatBytes(b) { return b < 1024 ? b + ' B' : (b/1024).toFixed(1) + ' KB'; }
+
+  // ─── Terminal log ─────────────────────────────────────────
+  function logLine(msg, type = 'plain') {
+    const body = document.getElementById('terminalBody');
+    const t    = new Date().toTimeString().slice(0, 8);
+    body.querySelectorAll('.log-cursor').forEach(c => c.remove());
+    const line = document.createElement('div');
+    line.className = 'log-line';
+    line.innerHTML = `<span class="log-time">${t}</span><span class="log-${type}">${escHtml(msg)}</span>`;
+    body.appendChild(line);
+    body.scrollTop = body.scrollHeight;
+  }
+
+  // ─── Indicador de status ──────────────────────────────────
+  function setStatus(connected, name) {
+    activeConfig = connected ? String(name).replace(/\.conf$/i, '') : null;
+    document.getElementById('statusDot').className    = 'dot' + (connected ? ' active' : '');
+    document.getElementById('statusText').textContent = connected ? 'Conectado' : 'Desligado';
+    document.getElementById('activeName').textContent  = activeConfig || '';
+  }
+  function setStatusError() {
+    document.getElementById('statusDot').className    = 'dot error';
+    document.getElementById('statusText').textContent = 'Erro';
+  }
+
+  // ─── Sync status real com /status ────────────────────────
+  async function syncStatus() {
+    try {
+      const res  = await fetch('/status');
+      const data = await res.json();
+      setStatus(data.connected, data.current || '');
+    } catch (_) { setStatusError(); }
+  }
+
+  // ─── Carregar lista de configs ────────────────────────────
+  async function load() {
+    await syncStatus();
+    try {
+      const res   = await fetch('/configs');
+      const files = await res.json();
+      renderList(files);
+    } catch (e) {
+      renderList([]);
+      logLine('Falha ao carregar configurações: ' + e.message, 'err');
+    }
+  }
+
+  function renderList(configs) {
+    const list = document.getElementById('configList');
+    document.getElementById('configCount').textContent = configs.length;
+
+    if (!configs.length) {
+      list.innerHTML = `
+        <div class="empty-state">
+          <span class="empty-icon">◈</span>
+          <p>Nenhuma configuração encontrada.<br>Faça upload de um ficheiro .conf para começar.</p>
+        </div>`;
+      return;
+    }
+
+    list.innerHTML = '';
+    configs.forEach((name, i) => {
+      const iface    = name.replace(/\.conf$/i, '');
+      const isActive = iface === activeConfig;
+      const item     = document.createElement('div');
+      item.className = 'config-item' + (isActive ? ' connected' : '');
+      item.style.animationDelay = (i * 40) + 'ms';
+      item.innerHTML = `
+        <div class="config-left">
+          <div class="config-indicator"></div>
+          <div>
+            <div class="config-name">${escHtml(name)}</div>
+            <div class="config-meta">${isActive ? '● Activo' : 'Inactivo'}</div>
+          </div>
+        </div>
+        <div class="config-actions">
+          <button class="btn btn-connect ${isActive ? 'active' : ''}"
+            onclick="doConnect('${escAttr(iface)}')"
+            ${isActive ? 'disabled' : ''}>
+            ${isActive ? '✓ Activo' : '▶ Conectar'}
+          </button>
+          <button class="btn btn-delete"
+            title="${isActive ? 'Desconecte antes de apagar' : 'Apagar ' + escAttr(name)}"
+            onclick="openDeleteDialog('${escAttr(iface)}')"
+            ${isActive ? 'disabled' : ''}>✕</button>
+        </div>`;
+      list.appendChild(item);
+    });
+  }
+
+  function escHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g,
+      c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  // Para atributos inline de onclick (sem aspas simples)
+  function escAttr(s) { return String(s ?? '').replace(/'/g, "\\'"); }
+
+  // ─── Upload ───────────────────────────────────────────────
+  async function doUpload() {
+    const file = fileInput.files[0];
+    if (!file) return;
+    const btn = document.getElementById('btnUpload');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> A enviar...';
+    logLine('Upload iniciado: ' + file.name, 'info');
+    try {
+      const fd = new FormData();
+      fd.append('config', file);
+      const res  = await fetch('/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (res.ok) {
+        logLine('Config "' + data.file + '" importada com sucesso.', 'ok');
+        document.getElementById('fileSelected').classList.remove('visible');
+        fileInput.value = '';
+        btn.disabled = true;
+        load();
+      } else {
+        logLine('Erro no upload: ' + (data.error || JSON.stringify(data)), 'err');
+        btn.disabled = false;
+      }
+    } catch (e) {
+      logLine('Falha na ligação: ' + e.message, 'err');
+      btn.disabled = false;
+    } finally {
+      btn.innerHTML = '<span>⬆</span> Fazer Upload';
+    }
+  }
+
+  // ─── Conectar ─────────────────────────────────────────────
+  async function doConnect(iface) {
+    logLine('A ligar a "' + iface + '"...', 'info');
+    try {
+      const res  = await fetch('/connect/' + encodeURIComponent(iface), { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        logLine(data.status === 'já conectado'
+          ? 'Já conectado a: ' + iface
+          : 'Ligado com sucesso: ' + iface, 'ok');
+        setStatus(true, iface);
+        load();
+      } else {
+        logLine('Falha ao ligar: ' + (data.error || JSON.stringify(data)), 'err');
+        setStatusError();
+      }
+    } catch (e) {
+      logLine('Erro: ' + e.message, 'err');
+      setStatusError();
+    }
+  }
+
+  // ─── Desconectar ──────────────────────────────────────────
+  async function doDisconnect() {
+    if (!activeConfig) { logLine('Nenhuma ligação activa.', 'info'); return; }
+    logLine('A desligar...', 'info');
+    try {
+      const res  = await fetch('/disconnect', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        logLine('VPN desligada' + (data.interface ? ': ' + data.interface : '') + '.', 'ok');
+        setStatus(false, '');
+        load();
+      } else {
+        logLine('Erro ao desligar: ' + (data.error || JSON.stringify(data)), 'err');
+      }
+    } catch (e) { logLine('Erro: ' + e.message, 'err'); }
+  }
+
+  // ─── Apagar config ────────────────────────────────────────
+  function openDeleteDialog(iface) {
+    deleteTarget = iface;
+    document.getElementById('deleteTargetName').textContent = iface + '.conf';
+    document.getElementById('deleteOverlay').classList.add('visible');
+  }
+  function closeDeleteDialog() {
+    deleteTarget = null;
+    document.getElementById('deleteOverlay').classList.remove('visible');
+  }
+  document.getElementById('deleteOverlay').addEventListener('click', function(e) {
+    if (e.target === this) closeDeleteDialog();
+  });
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    const iface = deleteTarget;
+    closeDeleteDialog();
+    logLine('A apagar config: ' + iface + '.conf', 'info');
+    try {
+      const res  = await fetch('/configs/' + encodeURIComponent(iface), { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok) {
+        logLine('Config apagada: ' + data.deleted, 'ok');
+        load();
+      } else {
+        logLine('Erro ao apagar: ' + (data.error || JSON.stringify(data)), 'err');
+      }
+    } catch (e) { logLine('Erro: ' + e.message, 'err'); }
+  }
+
+  // ─── Init + auto-refresh 10s ──────────────────────────────
+  load();
+  setInterval(load, 10_000);
+</script>
+</body>
+</html>
