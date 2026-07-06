@@ -159,7 +159,7 @@ function rateLimit(windowMs = 60_000, max = 20) {
     next();
   };
 }
-app.use(rateLimit());
+app.use(rateLimit(60000, 500));
 
 // ─────────────────────────────────────────────
 // Rotas
