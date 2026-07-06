@@ -178,7 +178,20 @@ app.get("/configs", (req, res) => {
   }
 });
 
+// ── Verificar IP Público ───────────────────────────────
+app.get("/my-ip", async (req, res) => {
+  try {
+    // A flag -4 obriga o curl a usar apenas IPv4
+    const { stdout } = await runCmd("curl -4 -s -m 5 ifconfig.me");
+    res.json({ ip: stdout.trim() });
+  } catch (e) {
+    log.error("Erro ao obter IP:", e.message);
+    res.status(500).json({ error: "Falha" });
+  }
+});
+
 // ── Upload config ─────────────────────────────
+// ── Upload config com injeção de PrivateKey ─────────────────────────────
 app.post("/upload", (req, res) => {
   upload.single("config")(req, res, (err) => {
     if (err instanceof multer.MulterError) {
@@ -193,11 +206,31 @@ app.post("/upload", (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: "Nenhum ficheiro enviado" });
     }
+
+    // Injeção da PrivateKey (se enviada no form)
+    if (req.body.privateKey) {
+      const filePath = req.file.path;
+      let content = fs.readFileSync(filePath, "utf8");
+      const pk = req.body.privateKey.trim();
+
+      if (content.match(/^PrivateKey\s*=/m)) {
+        // Substitui a existente
+        content = content.replace(/^PrivateKey\s*=.*$/m, `PrivateKey = ${pk}`);
+      } else {
+        // Insere logo abaixo de [Interface]
+        content = content.replace(/(\[Interface\])/i, `$1\nPrivateKey = ${pk}`);
+      }
+      
+      fs.writeFileSync(filePath, content, "utf8");
+      log.info(`PrivateKey injetada no ficheiro: ${req.file.filename}`);
+    }
+
     log.info("Config carregada:", req.file.filename);
     res.json({ ok: true, file: req.file.filename });
   });
 });
 
+// ── Conectar ──────────────────────────────────
 // ── Conectar ──────────────────────────────────
 app.post("/connect/:name", async (req, res) => {
   const iface = sanitizeIface(req.params.name);
@@ -211,6 +244,16 @@ app.post("/connect/:name", async (req, res) => {
     return res.status(404).json({ error: `Config não encontrada: ${iface}.conf` });
   }
 
+  // --- VALIDAÇÃO DE SEGURANÇA: Verifica se tem chave e rotas ---
+  const content = fs.readFileSync(confPath, "utf8");
+  if (!content.match(/^PrivateKey\s*=/m)) {
+    return res.status(400).json({ error: "Falta a PrivateKey. Faça upload novamente com a chave." });
+  }
+  if (!content.includes("PostUp = ip route add") && !content.includes("PostUp = ip rule add")) {
+    return res.status(400).json({ error: "Faltam as rotas. Utilize o painel para atualizar as rotas primeiro." });
+  }
+  // -------------------------------------------------------------
+
   // Já está ligado a esta interface
   if (state.currentInterface === iface) {
     return res.json({ status: "já conectado", interface: iface });
@@ -223,7 +266,6 @@ app.post("/connect/:name", async (req, res) => {
         await runCmd(`wg-quick down ${state.currentInterface}`);
         log.info("Desligado:", state.currentInterface);
       } catch (e) {
-        // Aviso mas continua – pode já estar inativa
         log.warn(`Falha ao desligar ${state.currentInterface}:`, e.message);
       }
     }
@@ -275,6 +317,56 @@ app.get("/status", async (req, res) => {
     res.json({ connected: false, current: null, interfaces: [] });
   }
 });
+
+app.post("/update-routing", (req, res) => {
+  const { ip, gateway } = req.body;
+  if (!ip || !gateway) {
+    return res.status(400).json({ error: "Faltam IP ou Gateway" });
+  }
+
+  try {
+    const files = fs.readdirSync(WG_DIR).filter(f => f.endsWith(".conf") && !f.startsWith("."));
+    let atualizados = 0;
+
+    for (const file of files) {
+      const filePath = path.join(WG_DIR, file);
+      let content = fs.readFileSync(filePath, "utf8");
+
+      // 1. Extrair o domínio do servidor Surfshark (ex: ar-bua.prod.surfshark.com)
+      const endpointMatch = content.match(/Endpoint\s*=\s*([^:]+):\d+/);
+      const domain = endpointMatch ? endpointMatch[1] : "br-sao.prod.surfshark.com";
+
+      // 2. Limpar regras antigas (se já existirem) para evitar duplicação
+      content = content.replace(/^Post(?:Up|Down).*$/gm, "").replace(/\n{2,}/g, "\n");
+
+      // 3. Criar as novas regras formatadas
+// 3. Criar as novas regras formatadas (sem forçar o dev eth0)
+// 3. Criar as novas regras com tolerância a falhas (|| true em todo o lado)
+      const novasRegras = `
+PostUp = ip rule add from ${ip} lookup main priority 100 || true
+PostUp = ip route add $(getent ahostsv4 ${domain} | head -1 | awk '{print $1}') via ${gateway} || true
+PostDown = ip rule del from ${ip} lookup main priority 100 || true
+PostDown = ip route del $(getent ahostsv4 ${domain} | head -1 | awk '{print $1}') via ${gateway} || true
+`;
+      // 4. Inserir as novas regras exatamente antes da secção [Peer]
+      if (content.includes("[Peer]")) {
+        content = content.replace("[Peer]", novasRegras.trim() + "\n\n[Peer]");
+      } else {
+        content += "\n" + novasRegras.trim(); 
+      }
+
+      fs.writeFileSync(filePath, content.trim() + "\n", "utf8");
+      atualizados++;
+    }
+
+    log.info(`Rotas injetadas em ${atualizados} ficheiros. IP: ${ip}, GW: ${gateway}`);
+    res.json({ ok: true, message: `Rotas injetadas com sucesso em ${atualizados} ficheiros.` });
+  } catch (e) {
+    log.error("Erro ao atualizar rotas:", e.message);
+    res.status(500).json({ error: "Falha ao atualizar rotas." });
+  }
+});
+
 
 // ── Apagar config ─────────────────────────────
 app.delete("/configs/:name", async (req, res) => {
