@@ -337,7 +337,7 @@
       </div>
       <div class="panel-body">
         <div class="upload-zone" id="dropZone">
-          <input type="file" id="fileInput" accept=".conf">
+          <input type="file" id="fileInput" accept=".conf" multiple>
           <span class="upload-icon">⬆</span>
           <div class="upload-label">
             <strong>Clique para selecionar</strong> ou arraste o ficheiro aqui<br>
@@ -426,24 +426,33 @@
   const fileInput = document.getElementById('fileInput');
   const dropZone  = document.getElementById('dropZone');
 
+// ─── File input / drag-and-drop ───────────────────────────
   fileInput.addEventListener('change', () => {
-    if (fileInput.files[0]) showFilePreview(fileInput.files[0]);
+    if (fileInput.files.length > 0) showFilePreview(fileInput.files);
   });
   dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
   dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
   dropZone.addEventListener('drop', e => {
     e.preventDefault(); dropZone.classList.remove('drag-over');
-    const f = e.dataTransfer.files[0];
-    if (f) { fileInput.files = e.dataTransfer.files; showFilePreview(f); }
+    if (e.dataTransfer.files.length > 0) { 
+      fileInput.files = e.dataTransfer.files; 
+      showFilePreview(fileInput.files); 
+    }
   });
 
-  function showFilePreview(file) {
-    document.getElementById('fileName').textContent = file.name;
-    document.getElementById('fileSize').textContent  = formatBytes(file.size);
+  function showFilePreview(files) {
+    if (files.length === 1) {
+      document.getElementById('fileName').textContent = files[0].name;
+      document.getElementById('fileSize').textContent  = formatBytes(files[0].size);
+    } else {
+      document.getElementById('fileName').textContent = files.length + ' ficheiros selecionados';
+      document.getElementById('fileSize').textContent = '';
+    }
     document.getElementById('fileSelected').classList.add('visible');
     document.getElementById('btnUpload').disabled = false;
   }
   function formatBytes(b) { return b < 1024 ? b + ' B' : (b/1024).toFixed(1) + ' KB'; }
+
 
 // ─── Mostrar/Ocultar Ferramentas ──────────────────────────
   function toggleTools() {
@@ -620,42 +629,38 @@
 
   // ─── Upload ───────────────────────────────────────────────
 async function doUpload() {
-    const file = fileInput.files[0];
-    if (!file) return;
+    const files = fileInput.files;
+    if (files.length === 0) return;
     
-    // Lê a Private Key inserida pelo utilizador
     const privateKey = document.getElementById('inputPk').value.trim();
-
     const btn = document.getElementById('btnUpload');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> A enviar...';
     
     try {
       const fd = new FormData();
-      fd.append('config', file);
-      
-      // Anexa a Private Key se o utilizador a tiver preenchido
-      if (privateKey) {
-        fd.append('privateKey', privateKey);
+      // Adiciona todos os ficheiros ao FormData
+      for (let i = 0; i < files.length; i++) {
+        fd.append('configs', files[i]);
       }
+      if (privateKey) fd.append('privateKey', privateKey);
 
       const res  = await fetch('/upload', { method: 'POST', body: fd });
       const data = await res.json();
+      
       if (res.ok) {
-        logLine('Config "' + data.file + '" importada com sucesso.', 'ok');
+        logLine(data.message, 'ok');
         document.getElementById('fileSelected').classList.remove('visible');
-        fileInput.value = '';
-        btn.disabled = true;
+        fileInput.value = ''; // Limpa o input
         load();
       } else {
         logLine('Erro no upload: ' + (data.error || JSON.stringify(data)), 'err');
-        btn.disabled = false;
       }
     } catch (e) {
       logLine('Falha na ligação: ' + e.message, 'err');
-      btn.disabled = false;
     } finally {
       btn.innerHTML = '<span>⬆</span> Fazer Upload';
+      btn.disabled = false;
     }
   }
 
