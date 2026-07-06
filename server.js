@@ -210,42 +210,39 @@ app.get("/my-ip", async (req, res) => {
 });
 
 // ── Upload config ─────────────────────────────
-// ── Upload config com injeção de PrivateKey ─────────────────────────────
+// ── Upload de múltiplas configs ─────────────────────────────
 app.post("/upload", (req, res) => {
-  upload.single("config")(req, res, (err) => {
-    if (err instanceof multer.MulterError) {
-      if (err.code === "LIMIT_FILE_SIZE") {
-        return res.status(413).json({ error: `Ficheiro demasiado grande (máx ${MAX_UPLOAD_SIZE / 1024} KB)` });
-      }
-      return res.status(400).json({ error: err.message });
-    }
+  // Permite até 100 ficheiros em simultâneo
+  upload.array("configs", 100)(req, res, (err) => {
     if (err) {
       return res.status(400).json({ error: err.message });
     }
-    if (!req.file) {
+    if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: "Nenhum ficheiro enviado" });
     }
 
-    // Injeção da PrivateKey (se enviada no form)
-    if (req.body.privateKey) {
-      const filePath = req.file.path;
-      let content = fs.readFileSync(filePath, "utf8");
-      const pk = req.body.privateKey.trim();
+    const pk = req.body.privateKey ? req.body.privateKey.trim() : null;
+    let count = 0;
 
-      if (content.match(/^PrivateKey\s*=/m)) {
-        // Substitui a existente
-        content = content.replace(/^PrivateKey\s*=.*$/m, `PrivateKey = ${pk}`);
-      } else {
-        // Insere logo abaixo de [Interface]
-        content = content.replace(/(\[Interface\])/i, `$1\nPrivateKey = ${pk}`);
+    for (const file of req.files) {
+      // Injeção da PrivateKey em cada ficheiro (se enviada)
+      if (pk) {
+        const filePath = file.path;
+        let content = fs.readFileSync(filePath, "utf8");
+
+        if (content.match(/^PrivateKey\s*=/m)) {
+          content = content.replace(/^PrivateKey\s*=.*$/m, `PrivateKey = ${pk}`);
+        } else {
+          content = content.replace(/(\[Interface\])/i, `$1\nPrivateKey = ${pk}`);
+        }
+        
+        fs.writeFileSync(filePath, content, "utf8");
       }
-      
-      fs.writeFileSync(filePath, content, "utf8");
-      log.info(`PrivateKey injetada no ficheiro: ${req.file.filename}`);
+      count++;
     }
 
-    log.info("Config carregada:", req.file.filename);
-    res.json({ ok: true, file: req.file.filename });
+    log.info(`${count} configurações carregadas.`);
+    res.json({ ok: true, message: `${count} ficheiros importados com sucesso.` });
   });
 });
 
