@@ -165,6 +165,25 @@ app.use(rateLimit());
 // Rotas
 // ─────────────────────────────────────────────
 
+
+// ── Buscar IP e Gateway Local ─────────────────────────────
+app.get("/auto-routing", async (req, res) => {
+  try {
+    const { stdout } = await runCmd("ip route get 1.1.1.1");
+    const gwMatch = stdout.match(/via ([\d\.]+)/);
+    const ipMatch = stdout.match(/src ([\d\.]+)/);
+
+    if (gwMatch && ipMatch) {
+      res.json({ ip: ipMatch[1], gateway: gwMatch[1] });
+    } else {
+      res.status(500).json({ error: "Rede não detetada" });
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
 // ── Listar configs ────────────────────────────
 app.get("/configs", (req, res) => {
   try {
