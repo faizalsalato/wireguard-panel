@@ -296,27 +296,43 @@ EOF
   log_ok "Serviço systemd criado e activado no boot."
 }
 
-# ── Firewall ───────────────────────────────────────────────────
+# ── Firewall (iptables) ─────────────────────────────────────────
 setup_firewall() {
-  log_section "Configuração de firewall"
+  log_section "Configuração de firewall (iptables)"
 
-  if command -v ufw &>/dev/null && ufw status | grep -q "active"; then
-    if confirm "Abrir porta $PORT no UFW?"; then
-      ufw allow "$PORT/tcp" &>/dev/null
-      log_ok "Porta $PORT aberta no UFW."
+  if ! command -v iptables &>/dev/null; then
+    log_warn "iptables não está instalado."
+    return
+  fi
+
+  if confirm "Abrir porta $PORT no iptables?"; then
+
+    # Verifica se a regra já existe
+    if iptables -C INPUT -p tcp --dport "$PORT" -j ACCEPT 2>/dev/null; then
+      log_info "A porta $PORT já está liberada."
     else
-      log_warn "Porta não aberta. Faça manualmente: sudo ufw allow $PORT/tcp"
+      iptables -I INPUT -p tcp --dport "$PORT" -j ACCEPT
+      log_ok "Porta $PORT liberada no iptables."
     fi
-  elif command -v firewall-cmd &>/dev/null; then
-    if confirm "Abrir porta $PORT no firewalld?"; then
-      firewall-cmd --permanent --add-port="$PORT/tcp" &>/dev/null
-      firewall-cmd --reload &>/dev/null
-      log_ok "Porta $PORT aberta no firewalld."
+
+    # Salva as regras (Debian/Ubuntu)
+    if command -v netfilter-persistent &>/dev/null; then
+      netfilter-persistent save &>/dev/null
+      log_info "Regras salvas com netfilter-persistent."
+    elif command -v iptables-save &>/dev/null; then
+      mkdir -p /etc/iptables
+      iptables-save > /etc/iptables/rules.v4
+      log_info "Regras salvas em /etc/iptables/rules.v4."
+    else
+      log_warn "Não foi possível salvar as regras automaticamente."
+      log_warn "Após reiniciar, as regras poderão ser perdidas."
     fi
+
   else
-    log_info "Nenhum firewall activo detectado."
+    log_warn "Porta não aberta."
   fi
 }
+
 
 # ── Arranque e verificação ─────────────────────────────────────
 start_and_verify() {
