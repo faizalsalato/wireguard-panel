@@ -493,6 +493,23 @@
     } catch (_) { setStatusError(); }
   }
 
+	// ─── Preencher Rotas Automaticamente ──────────────────────
+  async function buscarAuto() {
+    logLine('A procurar IP e Gateway do servidor...', 'info');
+    try {
+      const res = await fetch('/auto-routing');
+      const data = await res.json();
+      if (res.ok) {
+        document.getElementById('inputIp').value = data.ip;
+        document.getElementById('inputGw').value = data.gateway;
+        logLine(`Encontrado! IP: ${data.ip} | GW: ${data.gateway}`, 'ok');
+      } else {
+        logLine('Erro ao buscar rotas: ' + data.error, 'err');
+      }
+    } catch (e) {
+      logLine('Erro na ligação: ' + e.message, 'err');
+    }
+  }
 
 // ─── Atualizar Rotas ─────────────────────────────────────────
   async function atualizarRotas() {
