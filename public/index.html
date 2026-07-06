@@ -194,7 +194,12 @@
   .actions-row { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
 
   /* ── Config list ── */
-  .config-list { display: flex; flex-direction: column; gap: 2px; }
+.config-list { 
+    display: flex; flex-direction: column; gap: 2px; 
+    max-height: 320px; /* Define a altura máxima */
+    overflow-y: auto;  /* Adiciona a barra de rolagem vertical */
+    padding-right: 6px; 
+  }
 
   .config-item {
     display: flex; align-items: center; justify-content: space-between;
@@ -297,7 +302,6 @@
 <body>
 <div class="container">
 
-  <!-- Header -->
   <div class="header">
     <div class="header-left">
       <div class="logo">
@@ -312,49 +316,67 @@
         <span id="statusText">A verificar...</span>
       </div>
       <div class="active-name" id="activeName"></div>
-      <div class="refresh-badge">
+      <div style="font-size: 11px; color: var(--accent); margin-top: 4px;">
+        IP: <strong id="publicIp">A verificar...</strong>
+      </div>
+      <div class="refresh-badge" style="margin-top: 6px;">
         <div class="refresh-ring"></div>
         auto-refresh 10s
       </div>
     </div>
+  </div> <div style="margin-bottom: 20px; display: flex; justify-content: center;">
+    <button class="btn" id="btnToggleTools" onclick="toggleTools()" style="background: var(--surface2); border: 1px solid var(--border-bright); color: var(--text); font-size: 13px; padding: 12px 24px; width: 100%; border-radius: 8px;">
+      ⚙️ Mostrar Ferramentas
+    </button>
   </div>
 
-  <!-- Upload Panel -->
-  <div class="panel">
-    <div class="panel-header">
-      <span class="panel-title">Importar Configuração</span>
-    </div>
-    <div class="panel-body">
-      <div class="upload-zone" id="dropZone">
-        <input type="file" id="fileInput" accept=".conf">
-        <span class="upload-icon">⬆</span>
-        <div class="upload-label">
-          <strong>Clique para selecionar</strong> ou arraste o ficheiro aqui<br>
-          <span style="font-size:10px;opacity:0.6">Ficheiros .conf do WireGuard · máx 1 MB</span>
+  <div id="toolsSection" style="display: none;">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">Importar Configuração</span>
+      </div>
+      <div class="panel-body">
+        <div class="upload-zone" id="dropZone">
+          <input type="file" id="fileInput" accept=".conf">
+          <span class="upload-icon">⬆</span>
+          <div class="upload-label">
+            <strong>Clique para selecionar</strong> ou arraste o ficheiro aqui<br>
+            <span style="font-size:10px;opacity:0.6">Ficheiros .conf do WireGuard · máx 1 MB</span>
+          </div>
+        </div>
+        <input type="text" id="inputPk" placeholder="A sua Private Key (opcional)" style="width: 100%; margin-top: 12px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 6px; font-family: var(--font-mono); font-size: 12px; outline: none;">
+        <div class="file-selected" id="fileSelected">
+          <span class="fname" id="fileName"></span>
+          <span style="color:var(--text-dim);font-size:11px" id="fileSize"></span>
+        </div>
+        <div class="actions-row">
+          <button class="btn btn-primary" onclick="doUpload()" id="btnUpload" disabled>
+            <span>⬆</span> Fazer Upload
+          </button>
+          <button class="btn btn-danger" onclick="doDisconnect()">
+            <span>✕</span> Desconectar
+          </button>
         </div>
       </div>
-      <div class="file-selected" id="fileSelected">
-        <span class="fname" id="fileName"></span>
-        <span style="color:var(--text-dim);font-size:11px" id="fileSize"></span>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">Atualizar Rotas em Lote</span>
       </div>
-      <div class="actions-row">
-        <button class="btn btn-primary" onclick="doUpload()" id="btnUpload" disabled>
-          <span>⬆</span> Fazer Upload
-        </button>
-        <button class="btn btn-danger" onclick="doDisconnect()">
-          <span>✕</span> Desconectar
-        </button>
+      <div class="panel-body" style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <input type="text" id="inputIp" placeholder="IP (ex: 10.147.196.146)" style="background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 6px; flex: 1; font-family: var(--font-mono); font-size: 12px; outline: none;">
+        <input type="text" id="inputGw" placeholder="Gateway (ex: 10.147.196.1)" style="background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 6px; flex: 1; font-family: var(--font-mono); font-size: 12px; outline: none;">
+        <button class="btn btn-primary" onclick="atualizarRotas()" id="btnRotas">Atualizar</button>
       </div>
     </div>
-  </div>
-
-  <!-- Configs Panel -->
-  <div class="panel">
+  </div> <div class="panel">
     <div class="panel-header">
       <span class="panel-title">Configurações Disponíveis</span>
       <span class="panel-count" id="configCount">0</span>
     </div>
     <div class="panel-body" style="padding:12px">
+      <input type="text" id="pesquisaConfig" placeholder="Pesquisar servidor..." onkeyup="filtrarConfigs()" style="width: 100%; margin-bottom: 12px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 6px; font-family: var(--font-mono); font-size: 12px; outline: none;">
       <div class="config-list" id="configList">
         <div class="empty-state">
           <span class="empty-icon">◈</span>
@@ -364,7 +386,6 @@
     </div>
   </div>
 
-  <!-- Terminal -->
   <div class="terminal">
     <div class="terminal-header">
       <div class="terminal-dots">
@@ -423,6 +444,21 @@
   }
   function formatBytes(b) { return b < 1024 ? b + ' B' : (b/1024).toFixed(1) + ' KB'; }
 
+// ─── Mostrar/Ocultar Ferramentas ──────────────────────────
+  function toggleTools() {
+    const section = document.getElementById('toolsSection');
+    const btn = document.getElementById('btnToggleTools');
+    
+    if (section.style.display === 'none') {
+      section.style.display = 'block';
+      btn.innerHTML = '✕ Ocultar Ferramentas';
+    } else {
+      section.style.display = 'none';
+      btn.innerHTML = '⚙️ Mostrar Ferramentas';
+    }
+  }
+  
+  
   // ─── Terminal log ─────────────────────────────────────────
   function logLine(msg, type = 'plain') {
     const body = document.getElementById('terminalBody');
@@ -456,6 +492,51 @@
     } catch (_) { setStatusError(); }
   }
 
+
+// ─── Atualizar Rotas ─────────────────────────────────────────
+  async function atualizarRotas() {
+    const ip = document.getElementById('inputIp').value.trim();
+    const gateway = document.getElementById('inputGw').value.trim();
+    
+    if (!ip || !gateway) {
+      logLine('Erro: Preencha o IP e o Gateway.', 'err');
+      return;
+    }
+
+    const btn = document.getElementById('btnRotas');
+    btn.disabled = true;
+    logLine(`A atualizar IP para ${ip} e GW para ${gateway}...`, 'info');
+
+    try {
+      const res = await fetch('/update-routing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip, gateway })
+      });
+      const data = await res.json();
+      
+      if (res.ok) {
+        logLine(data.message, 'ok');
+      } else {
+        logLine('Erro: ' + (data.error || JSON.stringify(data)), 'err');
+      }
+    } catch (e) {
+      logLine('Erro na ligação: ' + e.message, 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  
+  function filtrarConfigs() {
+    const termo = document.getElementById('pesquisaConfig').value.toLowerCase();
+    const items = document.querySelectorAll('.config-item');
+    items.forEach(item => {
+      const nome = item.querySelector('.config-name').textContent.toLowerCase();
+      item.style.display = nome.includes(termo) ? 'flex' : 'none';
+    });
+  }
+  
+  
   // ─── Carregar lista de configs ────────────────────────────
   async function load() {
     await syncStatus();
@@ -520,16 +601,26 @@
   function escAttr(s) { return String(s ?? '').replace(/'/g, "\\'"); }
 
   // ─── Upload ───────────────────────────────────────────────
-  async function doUpload() {
+async function doUpload() {
     const file = fileInput.files[0];
     if (!file) return;
+    
+    // Lê a Private Key inserida pelo utilizador
+    const privateKey = document.getElementById('inputPk').value.trim();
+
     const btn = document.getElementById('btnUpload');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> A enviar...';
-    logLine('Upload iniciado: ' + file.name, 'info');
+    
     try {
       const fd = new FormData();
       fd.append('config', file);
+      
+      // Anexa a Private Key se o utilizador a tiver preenchido
+      if (privateKey) {
+        fd.append('privateKey', privateKey);
+      }
+
       const res  = await fetch('/upload', { method: 'POST', body: fd });
       const data = await res.json();
       if (res.ok) {
@@ -550,6 +641,33 @@
     }
   }
 
+
+// ─── Verificar IP Público (Silencioso) ────────────────────
+  async function checkIp() {
+    try {
+      const res = await fetch('/my-ip');
+      const data = await res.json();
+      document.getElementById('publicIp').textContent = res.ok ? data.ip : 'Erro';
+    } catch (e) {
+      document.getElementById('publicIp').textContent = 'Erro';
+    }
+  }
+
+  // ─── Carregar lista de configs e atualizar tudo ───────────
+  async function load() {
+    await syncStatus();
+    checkIp(); // <--- O IP AGORA ATUALIZA SOZINHO AQUI
+    
+    try {
+      const res   = await fetch('/configs');
+      const files = await res.json();
+      renderList(files);
+    } catch (e) {
+      renderList([]);
+      logLine('Falha ao carregar configurações: ' + e.message, 'err');
+    }
+  }
+  
   // ─── Conectar ─────────────────────────────────────────────
   async function doConnect(iface) {
     logLine('A ligar a "' + iface + '"...', 'info');
@@ -562,6 +680,7 @@
           : 'Ligado com sucesso: ' + iface, 'ok');
         setStatus(true, iface);
         load();
+		checkIp();
       } else {
         logLine('Falha ao ligar: ' + (data.error || JSON.stringify(data)), 'err');
         setStatusError();
@@ -583,6 +702,7 @@
         logLine('VPN desligada' + (data.interface ? ': ' + data.interface : '') + '.', 'ok');
         setStatus(false, '');
         load();
+		checkIp();
       } else {
         logLine('Erro ao desligar: ' + (data.error || JSON.stringify(data)), 'err');
       }
